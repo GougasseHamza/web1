@@ -25,30 +25,32 @@ Build or verify the static challenge binary.
 
 ```bash
 if command -v go >/dev/null 2>&1; then
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o bin/teamshelf .
+  cd /home/ubuntu/secdojo/setup/tools
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../bin/teamshelf .
+  cd /home/ubuntu/secdojo
 else
-  test -x bin/teamshelf
+  test -x setup/bin/teamshelf
 fi
-file bin/teamshelf
+file setup/bin/teamshelf
 ```
 
 Validate the Compose file before starting the service.
 
 ```bash
-docker compose config
+docker compose -f setup/tools/docker-compose.yml config
 ```
 
 Build the local image.
 
 ```bash
-docker compose build
+docker compose -f setup/tools/docker-compose.yml build
 ```
 
 Start the challenge.
 
 ```bash
-docker compose up -d
-docker compose ps
+docker compose -f setup/tools/docker-compose.yml up -d
+docker compose -f setup/tools/docker-compose.yml ps
 ```
 
 Verify the public behavior.
@@ -65,14 +67,14 @@ Expected behavior:
 - `/` returns the TeamShelf workspace UI.
 - `/admin?queue=upload-review` returns `404 Not Found` from the edge gateway.
 - invalid PDF uploads return a JSON notice pointing to `/admin?queue=upload-review`.
-- `docker compose ps` shows `secdojo-teamshelf` running.
+- `docker compose -f setup/tools/docker-compose.yml ps` shows `secdojo-teamshelf` running.
 
 If the lab should listen on port 80 instead of 8080, set `PUBLIC_PORT` before starting Compose.
 
 ```bash
-docker compose down
-PUBLIC_PORT=80 docker compose up -d
-docker compose ps
+docker compose -f setup/tools/docker-compose.yml down
+PUBLIC_PORT=80 docker compose -f setup/tools/docker-compose.yml up -d
+docker compose -f setup/tools/docker-compose.yml ps
 ```
 
 Enable Docker after reboot and keep the challenge container persistent.
@@ -101,6 +103,6 @@ The flag is mounted from the host path `/home/local.txt` into the container at t
 
 ## File Organization
 
-- Challenge runtime source: `main.go`, `web/`
-- Docker deployment: `Dockerfile`, `docker-compose.yml`, `bin/teamshelf`
+- Challenge runtime source: `setup/tools/main.go`, `setup/tools/web/`
+- Docker deployment: `setup/tools/Dockerfile`, `setup/tools/docker-compose.yml`, `setup/bin/teamshelf`
 - Documentation images: `writeup/images/`

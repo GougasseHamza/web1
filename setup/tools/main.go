@@ -568,20 +568,20 @@ func handleArchiveEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing id"})
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing filename"})
 		return
 	}
 
 	// Deliberately vulnerable legacy behavior: the admin reader cleans the path
 	// after concatenation but never verifies that the result stays under storageRoot.
-	target := filepath.Clean(storageRoot + "/" + id)
+	target := filepath.Clean(storageRoot + "/" + filename)
 	body, err := os.ReadFile(target)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": "archive object not found",
-			"id":    id,
+			"error":    "archive object not found",
+			"filename": filename,
 		})
 		return
 	}

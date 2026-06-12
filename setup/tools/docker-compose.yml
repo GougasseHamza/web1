@@ -3,8 +3,8 @@ name: secdojo-teamshelf
 services:
   teamshelf:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: tools/Dockerfile
     image: secdojo/teamshelf-smuggling:local
     container_name: secdojo-teamshelf
     restart: unless-stopped
