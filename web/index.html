@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TeamShelf Workspace</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="/assets/mark.svg" alt="" width="36" height="36">
+        <div>
+          <strong>TeamShelf</strong>
+          <span>Workspace Storage</span>
+        </div>
+      </div>
+      <nav aria-label="Primary">
+        <a class="active" href="/">Files</a>
+        <a href="/api/health">Health</a>
+        <a href="#upload">Uploads</a>
+        <a href="/download?id=contracts/q2-renewals.txt">Contracts</a>
+        <a href="/download?id=teams/engineering/onboarding.txt">Onboarding</a>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">acme-collab workspace</p>
+          <h1>Shared storage for operational teams</h1>
+        </div>
+        <form class="login" action="/api/sync" method="post">
+          <input name="email" type="email" value="analyst@acme-collab.example" aria-label="Email">
+          <button type="submit">Sync</button>
+        </form>
+      </header>
+
+      <section class="status-grid" aria-label="Storage status">
+        <article>
+          <span>Used</span>
+          <strong>18.4 TB</strong>
+          <small>72% of team quota</small>
+        </article>
+        <article>
+          <span>Retention</span>
+          <strong>180 days</strong>
+          <small>Finance folders locked</small>
+        </article>
+        <article>
+          <span>Edge cache</span>
+          <strong>Warm</strong>
+          <small>Last sync 2 minutes ago</small>
+        </article>
+      </section>
+
+      <section class="file-panel">
+        <div class="panel-title">
+          <h2>Recent objects</h2>
+          <button id="refresh" type="button">Refresh</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Owner</th>
+              <th>Updated</th>
+              <th>Path</th>
+            </tr>
+          </thead>
+          <tbody id="files">
+            <tr>
+              <td>Q2 renewal matrix</td>
+              <td>Finance</td>
+              <td>2026-06-07</td>
+              <td><code>contracts/q2-renewals.txt</code></td>
+            </tr>
+            <tr>
+              <td>Workspace onboarding</td>
+              <td>Engineering</td>
+              <td>2026-06-03</td>
+              <td><code>teams/engineering/onboarding.txt</code></td>
+            </tr>
+            <tr>
+              <td>Sync audit log</td>
+              <td>Platform</td>
+              <td>2026-06-08</td>
+              <td><code>audit/2026-06-sync.log</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="upload" class="upload-panel">
+        <div class="panel-title">
+          <h2>Document intake</h2>
+          <span class="pill">PDF only</span>
+        </div>
+        <form id="upload-form" class="upload-form" action="/upload" method="post" enctype="multipart/form-data">
+          <label>
+            <span>Retention document</span>
+            <input id="document" name="document" type="file" accept="application/pdf,.pdf" required>
+          </label>
+          <button type="submit">Submit for review</button>
+        </form>
+        <div id="upload-result" class="upload-result" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

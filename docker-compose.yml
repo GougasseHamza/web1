@@ -1,0 +1,27 @@
+name: secdojo-teamshelf
+
+services:
+  teamshelf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: secdojo/teamshelf-smuggling:local
+    container_name: secdojo-teamshelf
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    ports:
+      - "${PUBLIC_PORT:-8080}:8080"
+    volumes:
+      - type: bind
+        source: /home/local.txt
+        target: /home/local.txt
+        read_only: true
+        bind:
+          create_host_path: false
+          selinux: z

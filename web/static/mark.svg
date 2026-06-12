@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72" role="img" aria-label="TeamShelf">
+  <rect width="72" height="72" rx="14" fill="#267367"/>
+  <path d="M18 24c0-3.314 2.686-6 6-6h24c3.314 0 6 2.686 6 6v24c0 3.314-2.686 6-6 6H24c-3.314 0-6-2.686-6-6V24z" fill="#f5fbf9"/>
+  <path d="M25 29h22M25 36h22M25 43h14" stroke="#175b51" stroke-width="4" stroke-linecap="round"/>
+</svg>
+
