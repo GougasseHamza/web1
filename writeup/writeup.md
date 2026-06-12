@@ -2,7 +2,7 @@
 
 **Description of the lab:**
 
-TeamShelf Edge is a realistic cloud-storage challenge focused on HTTP request smuggling. Learners interact with a PDF-only document intake flow, discover an internal admin review queue from an upload rejection notice, and abuse a backend archive-reader path traversal to read `/home/local.txt`.
+TeamShelf Edge is a realistic cloud-storage challenge focused on HTTP request smuggling. Learners interact with a PDF-only document intake flow, discover an internal upload-review queue from a rejection notice, recover an archived Basic authorization header, and abuse a backend archive-reader path traversal to read `/home/local.txt`.
 
 Lab details:
 
@@ -15,7 +15,7 @@ Lab details:
 
 ## 1. Lab Context
 
-TeamShelf is a team storage service with public file browsing and a PDF-only retention-document intake workflow. The public edge gateway blocks administrative paths, but it reuses an HTTP/1.1 upstream connection to the backend object service. The edge frames requests by `Content-Length`, while the backend honors `Transfer-Encoding: chunked`, creating a CL.TE desync. Learners first trigger a hardened upload rejection notice that reveals suspicious files are reviewed in `/admin?queue=upload-review`, then use Burp Suite to smuggle backend-only requests and complete the archive-reader path traversal chain.
+TeamShelf is a team storage service with public file browsing and a PDF-only retention-document intake workflow. The public edge gateway blocks administrative paths, but it reuses an HTTP/1.1 upstream connection to the backend object service. The edge frames requests by `Content-Length`, while the backend honors `Transfer-Encoding: chunked`, creating a CL.TE desync. Learners first trigger a hardened upload rejection notice that reveals suspicious files are reviewed in `/admin?queue=upload-review`, then use request smuggling to reach the backend-only queue. The queue contains archive history from a restore migration where a legacy connector header was accidentally archived and never rotated.
 
 ---
 
@@ -43,7 +43,7 @@ Only port `8080` is published to the host. The `127.0.0.1:9001` backend is not e
 | Upload validation | Try to bypass the PDF-only intake check with a fake PDF. | Rejection notice mentions `/admin?queue=upload-review` | Burp Repeater |
 | Access control check | Confirm normal `/admin` requests are blocked by the edge gateway. | `Server: TeamShelf-Edge/4.18`, HTTP 404 | Burp Repeater |
 | Desync | Send a CL.TE request, then send a trigger request to read the queued backend response. | Backend returns the admin review queue to the trigger request. | Burp Repeater, HTTP/1.1 |
-| Credential access | Request `/admin?queue=upload-review` through smuggling and read service credentials. | `svc-audit:ledger-drift-2026` | Burp Repeater |
+| Credential access | Request `/admin?queue=upload-review` through smuggling and read the archived restore connector header. | `Authorization: Basic c3Zj...` | Burp Repeater |
 | Parameter discovery | Fuzz or test archive selector parameter names until the archive log returns. | `id` returns the audit log with HTTP 200. | Player-chosen tooling such as ffuf, Burp Intruder, or Repeater |
 | Collection | Abuse `/admin/archive?id=...` path traversal to read `/home/local.txt`. | Response body contains the flag. | Basic auth plus `../../../home/local.txt` |
 
@@ -196,12 +196,12 @@ Connection: close
 **Output**
 ```html
 <h1>Upload Review Queue</h1>
-<code>svc-audit:ledger-drift-2026</code>
+<code>Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2</code>
 <code>GET /admin/archive</code>
 ```
 
 **Answer**  
-`The smuggled /admin?queue=upload-review request reveals svc-audit:ledger-drift-2026 and /admin/archive.`
+`The smuggled /admin?queue=upload-review request reveals an archived Basic authorization header and /admin/archive.`
 ---
 
 ### Q4: Which archive query parameter selects the restored document?
@@ -210,14 +210,14 @@ Connection: close
 Discover the query parameter accepted by `/admin/archive`.
 
 **Why it matters**  
-The admin queue leaks that legacy restore clients use a query-string selector, but it does not reveal the parameter name.
+The upload-review queue leaks archive history from a restore migration. That history shows a reusable Basic authorization header and says restore clients use a query-string selector, but it does not reveal the parameter name.
 
 **Where to look (artifacts)**  
 - `/admin/archive`
 - HTTP status and body differences after each smuggled attempt
 
 **Methodology / Steps**  
-1. Add `Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2` to the smuggled archive request.
+1. Copy the archived `Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2` header into the smuggled archive request.
 2. Test or fuzz common selector names such as `file`, `path`, `object`, `key`, `archive`, and `id`.
 3. Send a trigger request after each smuggle.
 4. The correct parameter returns the audit log with HTTP 200.
@@ -242,6 +242,14 @@ Host: teamshelf.local
 Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2
 Connection: keep-alive
 
+```
+
+Failed selector response:
+
+```json
+{
+  "error": "missing id"
+}
 ```
 
 Correct attempt:
@@ -274,8 +282,9 @@ Connection: close
 
 **Output**
 ```text
-2026-06-08T22:14:09Z sync job queued by svc-audit
+2026-06-08T22:14:09Z upload quarantine sync queued by retention-worker
 2026-06-08T22:15:33Z archive reader migration deferred
+2026-06-08T22:17:02Z restore connector rotation ticket still open
 ```
 
 **Answer**  
@@ -285,7 +294,7 @@ Connection: close
 ### Q5: What is the flag in `/home/local.txt`?
 
 **Objective**  
-Use the leaked credentials and the path traversal bug to read the mounted flag.
+Use the archived Basic authorization header and the path traversal bug to read the mounted flag.
 
 **Why it matters**  
 This demonstrates full impact: a public edge desync reaches a backend-only admin queue, then a backend file-read flaw exposes local host data mounted into the container.
@@ -296,7 +305,7 @@ This demonstrates full impact: a public edge desync reaches a backend-only admin
 - path traversal sequence `../../../home/local.txt`
 
 **Methodology / Steps**  
-1. Keep the Basic auth header from the previous step.
+1. Keep the archived Basic authorization header from the previous step.
 2. Replace the archive object ID with `../../../home/local.txt`.
 3. Send the smuggle request.
 4. Send the trigger request and read the queued response.

@@ -1,10 +1,10 @@
 # Lab Description
 
-TeamShelf Edge is a web application security lab about HTTP/1.1 request smuggling in a realistic cloud storage platform. Learners interact with a public file workspace and PDF-only upload intake, discover the admin review queue from a failed upload notice, then use a CL.TE desync to make the backend process requests the gateway never authorized.
+TeamShelf Edge is a web application security lab about HTTP/1.1 request smuggling in a realistic cloud storage platform. Learners interact with a public file workspace and PDF-only upload intake, discover the upload-review queue from a failed upload notice, then use a CL.TE desync to make the backend process requests the gateway never authorized.
 
 # Overview of the TeamShelf storage solution
 
-TeamShelf is a fictional managed storage product for internal teams. The lab models a common production pattern: an edge gateway keeps a warm upstream connection to an object service, while the object service exposes a backend-only upload review and archive maintenance console. The gateway and backend disagree on how to frame a request containing both `Content-Length` and `Transfer-Encoding: chunked`, allowing a smuggled request to reach the admin review queue after the upload workflow reveals it.
+TeamShelf is a fictional managed storage product for internal teams. The lab models a common production pattern: an edge gateway keeps a warm upstream connection to an object service, while the object service exposes a backend-only upload review and archive maintenance console. The gateway and backend disagree on how to frame a request containing both `Content-Length` and `Transfer-Encoding: chunked`, allowing a smuggled request to reach the review queue after the upload workflow reveals it. The queue includes archive history from a restore migration where a legacy Basic authorization header was accidentally archived and never rotated.
 
 # MITRE ATT&CK Techniques Used
 

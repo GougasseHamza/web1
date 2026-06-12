@@ -23,11 +23,10 @@ import (
 )
 
 const (
-	backendAddr = "127.0.0.1:9001"
-	storageRoot = "/tmp/teamshelf/storage"
-	uploadRoot  = "/tmp/teamshelf/uploads"
-	adminUser   = "svc-audit"
-	adminPass   = "ledger-drift-2026"
+	backendAddr       = "127.0.0.1:9001"
+	storageRoot       = "/tmp/teamshelf/storage"
+	uploadRoot        = "/tmp/teamshelf/uploads"
+	archiveAuthHeader = "Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2"
 
 	maxUploadRequestBytes = 768 * 1024
 	maxUploadFileBytes    = 512 * 1024
@@ -546,12 +545,14 @@ func handleAdminIndex(w http.ResponseWriter, r *http.Request) {
     <h1>Upload Review Queue</h1>
     <p>Suspicious upload attempts are reviewed here before document-retention restores are approved.</p>
     <dl class="secrets">
-      <dt>Audit service credentials</dt>
-      <dd><code>svc-audit:ledger-drift-2026</code></dd>
+      <dt>Archive history</dt>
+      <dd><code>2026-06-08 restore-runner note archived with legacy connector header still attached</code></dd>
+      <dt>Archived connector header</dt>
+      <dd><code>Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2</code></dd>
       <dt>Archive restore console</dt>
       <dd><code>GET /admin/archive</code></dd>
       <dt>Operator note</dt>
-      <dd>The archive restore reader is pinned to the legacy audit service. Restore clients still pass the archive object selector in the URL query string.</dd>
+      <dd>The restore connector was archived during the migration and has not been rotated yet. Restore clients still pass the archive object selector in the URL query string.</dd>
     </dl>
     <p class="muted">This console is reachable only from the edge-to-object service path.</p>
   </main>
@@ -561,8 +562,7 @@ func handleAdminIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleArchiveEndpoint(w http.ResponseWriter, r *http.Request) {
-	user, pass, ok := r.BasicAuth()
-	if !ok || user != adminUser || pass != adminPass {
+	if strings.TrimSpace(r.Header.Get("Authorization")) != archiveAuthHeader {
 		w.Header().Set("WWW-Authenticate", `Basic realm="TeamShelf audit archive"`)
 		writeTextStatus(w, http.StatusUnauthorized, "authentication required\n", "text/plain; charset=utf-8")
 		return
@@ -628,7 +628,7 @@ func seedStorage() error {
 	files := map[string]string{
 		"contracts/q2-renewals.txt":        "TeamShelf renewal matrix\nOwner: Finance\nStatus: legal review\n",
 		"teams/engineering/onboarding.txt": "Engineering onboarding\n- Request workspace access\n- Enroll hardware key\n- Review storage retention policy\n",
-		"audit/2026-06-sync.log":           "2026-06-08T22:14:09Z sync job queued by svc-audit\n2026-06-08T22:15:33Z archive reader migration deferred\n",
+		"audit/2026-06-sync.log":           "2026-06-08T22:14:09Z upload quarantine sync queued by retention-worker\n2026-06-08T22:15:33Z archive reader migration deferred\n2026-06-08T22:17:02Z restore connector rotation ticket still open\n",
 	}
 	for name, body := range files {
 		target := filepath.Join(storageRoot, name)
