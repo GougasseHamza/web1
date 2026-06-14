@@ -343,9 +343,10 @@ func backendHandler(w http.ResponseWriter, r *http.Request) {
 		writeAsset(w, "web/static/mark.svg", "image/svg+xml")
 	case "/api/health":
 		writeJSON(w, http.StatusOK, map[string]any{
-			"status":  "ok",
-			"edge":    "cache-warm",
-			"backend": "obj-eu-archive-03",
+			"status":   "ok",
+			"edge":     "cache-warm",
+			"backend":  "obj-eu-archive-03",
+			"upstream": "http/1.1 keep-alive",
 		})
 	case "/api/files":
 		writeJSON(w, http.StatusOK, []map[string]string{
