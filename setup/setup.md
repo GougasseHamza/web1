@@ -1,109 +1,115 @@
-# Important Notes
+# TeamShelf Deployment Setup
 
-## Environment Setup Requirements
-
-The challenge is self-contained for an offline Ubuntu 26 AWS instance. The web UI uses only local assets, the runtime is a static Go binary, and the Docker image uses `FROM scratch`, so the image build does not need Docker Hub.
-
-Run the commands below one block at a time from the repository root.
+Run these commands from the repository root. The host must already have Docker Engine with the Compose plugin installed.
 
 ```bash
-cd /home/ubuntu/secdojo
-pwd
-ls -la
+ROOT="$(pwd)"
+test -f "$ROOT/setup/tools/docker-compose.yml"
+test -f "$ROOT/setup/tools/Dockerfile"
+test -x "$ROOT/setup/bin/teamshelf"
 ```
 
-Create the host flag file. Replace the value before publishing the lab.
+## 1. Verify the Host Flag
+
+The platform flag must exist on the host at `/home/local.txt` before the container starts. The Compose file mounts that exact file read-only into the container.
 
 ```bash
-printf '%s\n' 'SECdojo{REPLACE_WITH_REAL_FLAG}' | sudo tee /home/local.txt >/dev/null
+sudo test -s /home/local.txt
 sudo chmod 0644 /home/local.txt
-sudo test -f /home/local.txt
 sudo ls -l /home/local.txt
 ```
 
-Build or verify the static challenge binary.
+## 2. Verify Docker
 
 ```bash
+sudo systemctl enable --now docker
+docker --version
+docker compose version
+```
+
+## 3. Build or Verify the Binary
+
+The repository includes a prebuilt linux/amd64 static binary at `setup/bin/teamshelf`. If Go is installed, rebuild it from source. If Go is not installed, the included binary is used.
+
+```bash
+cd "$ROOT"
 if command -v go >/dev/null 2>&1; then
-  cd /home/ubuntu/secdojo/setup/tools
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../bin/teamshelf .
-  cd /home/ubuntu/secdojo
+  (
+    cd setup/tools
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../bin/teamshelf .
+  )
 else
   test -x setup/bin/teamshelf
 fi
 file setup/bin/teamshelf
 ```
 
-Validate the Compose file before starting the service.
+## 4. Validate Compose
 
 ```bash
+cd "$ROOT"
 docker compose -f setup/tools/docker-compose.yml config
 ```
 
-Build the local image.
+## 5. Build the Image
 
 ```bash
+cd "$ROOT"
 docker compose -f setup/tools/docker-compose.yml build
 ```
 
-Start the challenge.
+## 6. Start the Service
 
 ```bash
+cd "$ROOT"
 docker compose -f setup/tools/docker-compose.yml up -d
 docker compose -f setup/tools/docker-compose.yml ps
 ```
 
-Verify the public behavior.
+The default public port is `8080`. To use another port, set `PUBLIC_PORT` when starting Compose.
 
 ```bash
-curl -i http://127.0.0.1:8080/ | head
-curl -i 'http://127.0.0.1:8080/admin?queue=upload-review' | head
-printf '%s\n' 'not a pdf' > /tmp/fake.pdf
-curl -s -F 'document=@/tmp/fake.pdf;filename=quarterly-report.pdf;type=application/pdf' http://127.0.0.1:8080/upload
-```
-
-Expected behavior:
-
-- `/` returns the TeamShelf workspace UI.
-- `/admin?queue=upload-review` returns `404 Not Found` from the edge gateway.
-- invalid PDF uploads return a JSON notice pointing to `/admin?queue=upload-review`.
-- `docker compose -f setup/tools/docker-compose.yml ps` shows `secdojo-teamshelf` running.
-
-If the lab should listen on port 80 instead of 8080, set `PUBLIC_PORT` before starting Compose.
-
-```bash
+cd "$ROOT"
 docker compose -f setup/tools/docker-compose.yml down
 PUBLIC_PORT=80 docker compose -f setup/tools/docker-compose.yml up -d
 docker compose -f setup/tools/docker-compose.yml ps
 ```
 
-Enable Docker after reboot and keep the challenge container persistent.
+## 7. Verify Runtime Behavior
 
 ```bash
-sudo systemctl enable --now docker
+curl -i http://127.0.0.1:8080/ | head
+curl -i 'http://127.0.0.1:8080/admin?queue=upload-review' | head
+curl -s http://127.0.0.1:8080/api/health
+printf '%s\n' 'not a pdf' > /tmp/fake.pdf
+curl -s -F 'document=@/tmp/fake.pdf;filename=quarterly-report.pdf;type=application/pdf' http://127.0.0.1:8080/upload
+```
+
+Expected results:
+
+- `/` returns the TeamShelf workspace UI.
+- `/admin?queue=upload-review` returns `404 Not Found` from the edge gateway.
+- `/api/health` returns JSON with `obj-eu-archive-03` and `http/1.1 keep-alive`.
+- The invalid upload response includes `/admin?queue=upload-review`.
+
+## 8. Verify Reboot Persistence
+
+```bash
 docker update --restart unless-stopped secdojo-teamshelf
 ```
 
-After a reboot, verify the service.
+Reboot the host when you are ready to test persistence. After the host comes back:
 
 ```bash
 docker ps --filter name=secdojo-teamshelf
 curl -s http://127.0.0.1:8080/api/health
+sudo test -s /home/local.txt
 ```
 
-The flag is mounted from the host path `/home/local.txt` into the container at the same path. This is required so the platform flag persists across container rebuilds and instance reboots. The Compose file uses `create_host_path: false` so startup fails clearly if `/home/local.txt` is missing instead of creating the wrong type of mount.
+## Notes
 
-## Lab Environment Constraints
-
-- No outbound internet is required during runtime.
-- No npm, pip, apt, CDN, or remote font dependency is used by the challenge.
-- Docker image build does not pull a base image because the Dockerfile uses `FROM scratch`.
-- The included binary is linux/amd64. On arm64, install Go before deployment and build with `GOARCH=arm64`.
-- Do not hardcode an instance IP in service config. Access the lab with `http://<instance-ip>:8080/` or the configured `PUBLIC_PORT`.
-
-## File Organization
-
-- Challenge runtime source: `setup/tools/main.go`, `setup/tools/web/`
-- Docker deployment: `setup/tools/Dockerfile`, `setup/tools/docker-compose.yml`, `setup/bin/teamshelf`
-- Minimal container root files: `setup/rootfs/etc/passwd`, `setup/rootfs/etc/group`
-- Documentation images: `writeup/images/`
+- Runtime does not require outbound internet.
+- The web UI uses only local assets.
+- The Dockerfile uses `FROM scratch`, so the image build does not pull a base image.
+- `/home/local.txt` is mounted read-only with `create_host_path: false`; startup fails if the flag file is missing.
+- On arm64 hosts, rebuild the binary with `GOARCH=arm64` before building the Docker image.
