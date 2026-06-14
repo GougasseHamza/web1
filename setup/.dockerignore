@@ -1,5 +1,9 @@
 *
 !bin/
 !bin/teamshelf
+!rootfs/
+!rootfs/etc/
+!rootfs/etc/passwd
+!rootfs/etc/group
 !tools/
 !tools/Dockerfile

@@ -105,4 +105,5 @@ The flag is mounted from the host path `/home/local.txt` into the container at t
 
 - Challenge runtime source: `setup/tools/main.go`, `setup/tools/web/`
 - Docker deployment: `setup/tools/Dockerfile`, `setup/tools/docker-compose.yml`, `setup/bin/teamshelf`
+- Minimal container root files: `setup/rootfs/etc/passwd`, `setup/rootfs/etc/group`
 - Documentation images: `writeup/images/`
